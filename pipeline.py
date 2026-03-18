@@ -110,6 +110,63 @@ def build_model():
 
     return model, x
 
+def build_model_relaxed():
+
+    model = pulp.LpProblem("PipelineRelaxed", pulp.LpMinimize)
+
+    x = pulp.LpVariable.dicts("x", range(1,n+1))
+    cut = pulp.LpVariable.dicts("cut", range(1,n+1), lowBound=0)
+    fill = pulp.LpVariable.dicts("fill", range(1,n+1), lowBound=0)
+
+    dump = pulp.LpVariable("dump", lowBound=0)
+    borrow = pulp.LpVariable("borrow", lowBound=0)
+
+    model += x[1] == 51
+    model += x[15] == 22
+
+    # relaxed grade 5 -> 5.5
+
+    for i in range(1,n):
+
+        if i == 8:   # station 8-9 relaxed
+
+            model += x[i+1] - x[i] <= 5.5
+            model += x[i] - x[i+1] <= 5.5
+
+        else:
+
+            model += x[i+1] - x[i] <= 5
+            model += x[i] - x[i+1] <= 5
+
+    for i in range(2,n):
+        model += x[i+1] - 2*x[i] + x[i-1] <= 6
+        model += -(x[i+1] - 2*x[i] + x[i-1]) <= 6
+
+    model += (x[2] - x[1]) - 4 <= 6
+    model += 4 - (x[2] - x[1]) <= 6
+
+    model += (-3) - (x[15] - x[14]) <= 6
+    model += (x[15] - x[14]) - (-3) <= 6
+
+    for i in range(1,n+1):
+        model += x[i] == h[i] - cut[i] + fill[i]
+
+    total_cut = pulp.lpSum(cut[i] for i in range(1,n+1))
+    total_fill = pulp.lpSum(fill[i] for i in range(1,n+1))
+
+    model += total_cut - total_fill == dump - borrow
+
+    cost = (
+        cut_cost * total_cut +
+        fill_cost * total_fill +
+        dump_cost * dump +
+        borrow_cost * borrow
+    )
+
+    model += cost
+
+    return model, x
+
 
 model, x = build_model()
 model.solve()
@@ -119,6 +176,11 @@ opt_cost = pulp.value(model.objective)
 solution = [pulp.value(x[i]) for i in range(1,n+1)]
 
 print("\nOptimal Cost =", opt_cost)
+
+model2, x2 = build_model_relaxed()
+model2.solve()
+
+print("Relaxed cost =", pulp.value(model2.objective))
 
 
 grades = []
